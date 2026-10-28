@@ -1,8 +1,8 @@
 # Formula language
 
 View → Interface language is the existing, persisted language preference. Choose **Español**
-for Spanish formula entry and display. On first run the preference follows the system language.
-English and the other interface languages currently use the English formula table and separators.
+or **Türkçe** for localized formula entry and display. On first run the preference follows the system language.
+Other interface languages use the English formula table and separators.
 
 | Spanish | Canonical English |
 | --- | --- |
@@ -20,6 +20,13 @@ Names are case-insensitive. Spanish formulas use decimal commas (`1,5`), semicol
 and reference unions, and backslashes between array columns (`{1\2;3\4}`). For example,
 `=SI(VERDADERO;SUMA(1,5;2,25);0)` evaluates to 3.75. English mode retains comma arguments,
 decimal points and comma array columns; it does not silently translate Spanish aliases.
+
+Turkish formulas use semicolon arguments, decimal commas and backslashes between array columns.
+For example, `=EĞER(DOĞRU;TOPLA(1,5;2,25);0)` evaluates to 3.75. `CONCAT` displays as
+`ARALIKBİRLEŞTİR`, while `TEXTJOIN` displays as `METİNBİRLEŞTİR`; both retain their own
+canonical identity when edited. Turkish function names follow Turkish casing rules for
+dotted and dotless `I`. LET bindings and LAMBDA parameters keep their declaration
+spelling when referenced with another case.
 
 The cell editor, formula bar, Show Formulas, autocomplete, the Formula ribbon, Insert Function, and argument hints
 use the selected formula language. Common Spanish function help is translated; functions

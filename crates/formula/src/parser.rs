@@ -128,14 +128,21 @@ fn word_is_cell(w: &str) -> Option<Anchor> {
     Some(Anchor { row, col, row_abs, col_abs })
 }
 
+fn strip_function_prefix(name: &str) -> Option<&str> {
+    for p in ["_XLFN._XLWS.", "_XLFN.", "_XLWS."] {
+        if name.get(..p.len()).is_some_and(|prefix| prefix.eq_ignore_ascii_case(p)) {
+            return name.get(p.len()..);
+        }
+    }
+    None
+}
+
 /// `_xlfn.XLOOKUP` → `XLOOKUP`. `_xludf.` is kept (`_xludf.SUM`): it marks a user-defined
 /// function, never the built-in of the same name, and files need it back.
 pub fn normalize_function_name(name: &str) -> String {
     let u = name.to_ascii_uppercase();
-    for p in ["_XLFN._XLWS.", "_XLFN.", "_XLWS."] {
-        if let Some(r) = u.strip_prefix(p) {
-            return r.to_string();
-        }
+    if let Some(r) = strip_function_prefix(&u) {
+        return r.to_string();
     }
     match u.strip_prefix("_XLUDF.") {
         Some(r) => format!("_xludf.{r}"),
@@ -292,8 +299,8 @@ impl Parser {
                 Ok(Expr::Paren(Box::new(e)))
             }
             Tok::LBrace => self.array(),
-            Tok::Func(name) => {
-                let name = normalize_function_name(&name);
+            Tok::Func(raw_name) => {
+                let name = normalize_function_name(&raw_name);
                 let mut args = self.args()?;
                 // Files write `A1#` as `_xlfn.ANCHORARRAY(A1)`.
                 if name == "ANCHORARRAY"
@@ -322,6 +329,13 @@ impl Parser {
                 {
                     return Ok(Expr::Unary(UnOp::Trim(mode), Box::new(x)));
                 }
+                // Turkish dotted/dotless i must survive until locale-aware alias and local
+                // binding resolution. Canonical file/API parsing keeps its usual casing.
+                let name = if self.locale == crate::FormulaLocale::Tr && name != "LET" && name != "LAMBDA" {
+                    strip_function_prefix(&raw_name).unwrap_or(&raw_name).to_string()
+                } else {
+                    name
+                };
                 Ok(Expr::Call(name, args))
             }
             Tok::Sheet(a, b) => {

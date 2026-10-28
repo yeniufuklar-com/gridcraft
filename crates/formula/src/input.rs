@@ -211,6 +211,17 @@ pub(crate) fn boolean_alias(name: &str, locale: FormulaLocale) -> Option<bool> {
     }
 }
 
+fn local_binding<'a>(name: &str, bindings: &'a [String], locale: FormulaLocale) -> Option<&'a str> {
+    bindings
+        .iter()
+        .rev()
+        .find(|n| match locale {
+            FormulaLocale::Tr => tr::turkish_eq_ignore_case(n, name),
+            _ => crate::same_name(n, name),
+        })
+        .map(String::as_str)
+}
+
 fn normalize(
     expr: &mut Expr,
     locale: FormulaLocale,
@@ -222,12 +233,7 @@ fn normalize(
     if depth > parser::MAX_DEPTH {
         return Err(ParseError { msg: "formula is nested too deeply".into(), pos: 0 });
     }
-    let bound = |name: &str, bindings: &[String]| {
-        bindings.iter().rev().any(|n| match locale {
-            FormulaLocale::Tr => tr::turkish_eq_ignore_case(n, name),
-            _ => crate::same_name(n, name),
-        }) || known_name(name)
-    };
+    let bound = |name: &str, bindings: &[String]| local_binding(name, bindings, locale).is_some() || known_name(name);
     match expr {
         Expr::Bool(value) if display => {
             let alias = match locale {
@@ -257,8 +263,16 @@ fn normalize(
                 *expr = Expr::Name(alias.into());
             }
         }
-        Expr::Name(name) if !display && !bound(name, bindings) => {
-            if let Some(value) = boolean_alias(name, locale) {
+        Expr::Name(name) if !display => {
+            if locale == FormulaLocale::Tr
+                && let Some(declaration) = local_binding(name, bindings, locale)
+            {
+                // The evaluator uses locale-independent name folding. Preserve the spelling
+                // of the declaration so Turkish case matches also resolve after storage.
+                *name = declaration.to_string();
+            } else if !bound(name, bindings)
+                && let Some(value) = boolean_alias(name, locale)
+            {
                 *expr = Expr::Bool(value);
             }
         }
@@ -292,8 +306,13 @@ fn normalize(
         }
         Expr::Call(name, args) => {
             let alias = if display { locale.function_name(name) } else { locale.canonical_name(name) };
-            if !bound(name, bindings) && (!display || !bound(alias, bindings)) {
-                *name = alias.to_string();
+            if !display
+                && locale == FormulaLocale::Tr
+                && let Some(declaration) = local_binding(name, bindings, locale)
+            {
+                *name = declaration.to_string();
+            } else if !bound(name, bindings) && (!display || !bound(alias, bindings)) {
+                *name = if display { alias.to_string() } else { parser::normalize_function_name(alias) };
             }
             for arg in args {
                 normalize(arg, locale, known_name, bindings, depth + 1, display)?;

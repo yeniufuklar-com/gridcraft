@@ -69,7 +69,7 @@ pub const TURKISH: &[(&str, &str)] = &[
     ("COMBIN", "KOMBİNASYON"),
     ("COMBINA", "KOMBİNASYONA"),
     ("COMPLEX", "KARMAŞIK"),
-    ("CONCAT", "METİNBİRLEŞTİR"),
+    ("CONCAT", "ARALIKBİRLEŞTİR"),
     ("CONCATENATE", "BİRLEŞTİR"),
     ("CONFIDENCE", "GÜVENİRLİK"),
     ("CONFIDENCE.NORM", "GÜVENİLİRLİK.NORM"),
@@ -523,7 +523,6 @@ pub const TURKISH_ALIASES: &[(&str, &str)] = &[
     ("CHISQ.INV", "KİKARETERS"),
     ("CHISQ.INV.RT", "KİKARE.TERS.KOD"),
     ("CHISQ.TEST", "KİKARETEST"),
-    ("CONCAT", "METİNBİRLEŞTİR"),
     ("CONCATENATE", "BİRLEŞTİR"),
     ("COUNT", "BAĞDEĞSAY"),
     ("COUNT", "SAY"),
@@ -651,6 +650,22 @@ pub(crate) fn turkish_eq_ignore_case(a: &str, b: &str) -> bool {
                 }
             }
             _ => return false,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{TURKISH, turkish_eq_ignore_case};
+
+    #[test]
+    fn primary_function_names_are_unambiguous() {
+        for (index, (canonical, localized)) in TURKISH.iter().enumerate() {
+            for (other_canonical, other_localized) in &TURKISH[index + 1..] {
+                if turkish_eq_ignore_case(localized, other_localized) {
+                    assert_eq!(canonical, other_canonical, "ambiguous Turkish display name: {localized}");
+                }
+            }
         }
     }
 }

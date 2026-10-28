@@ -261,6 +261,28 @@ fn turkish_interface_uses_localized_formulas_and_xlsx_roundtrip() {
 }
 
 #[test]
+fn turkish_function_identity_and_local_bindings_survive_recommit() {
+    let mut app = app();
+    app.run("app.language.set", json!({"code":"tr-TR"})).unwrap();
+    for (text, canonical, expected) in [
+        ("=LET(yanlış;7;YANLIŞ)", "LET(yanlış,7,yanlış)", Value::Number(7.0)),
+        ("=LAMBDA(indis;İNDİS)(8)", "LAMBDA(indis,indis)(8)", Value::Number(8.0)),
+        ("=LET(birleştir;LAMBDA(x;x+1);BİRLEŞTİR(2))", "LET(birleştir,LAMBDA(x,x+1),BIRLEşTIR(2))", Value::Number(3.0)),
+        (r#"=aralıkbirleştir("a";"b")"#, r#"CONCAT("a","b")"#, Value::text("ab")),
+        (r#"=metinbirleştir("-";DOĞRU;"a";"b")"#, r#"TEXTJOIN("-",TRUE,"a","b")"#, Value::text("a-b")),
+        (r#"=birleştir("a";"b")"#, r#"CONCATENATE("a","b")"#, Value::text("ab")),
+    ] {
+        assert!(enter(&mut app, text), "{text}");
+        assert_eq!(formula(&app), canonical, "{text}");
+        assert_eq!(app.session.active().unwrap().wb.active().unwrap().value(CellRef::new(0, 0)), expected, "{text}");
+        app.begin_edit(None, true);
+        assert!(app.commit_edit(0, 0, false, false));
+        assert_eq!(formula(&app), canonical, "recommit: {text}");
+        assert_eq!(app.session.active().unwrap().wb.active().unwrap().value(CellRef::new(0, 0)), expected, "recommit: {text}");
+    }
+}
+
+#[test]
 fn turkish_error_messages_and_error_codes_localized() {
     let mut app = app();
     app.run("app.language.set", json!({"code":"tr-TR"})).unwrap();

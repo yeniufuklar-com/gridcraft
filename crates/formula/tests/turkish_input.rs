@@ -27,6 +27,10 @@ fn turkish_aliases_and_argument_separators() {
         ("VARYANS(A1:A10)", "VAR(A1:A10)"),
         ("NORMDAĞ(1;2;3;DOĞRU)", "NORMDIST(1,2,3,TRUE)"),
         ("BİRLEŞTİR(\"a\";\"b\")", "CONCATENATE(\"a\",\"b\")"),
+        ("birleştir(\"a\";\"b\")", "CONCATENATE(\"a\",\"b\")"),
+        ("indis(A1:B2;1;2)", "INDEX(A1:B2,1,2)"),
+        ("aralıkbirleştir(A1:A3)", "CONCAT(A1:A3)"),
+        ("metinbirleştir(\",\";DOĞRU;A1:A3)", "TEXTJOIN(\",\",TRUE,A1:A3)"),
         ("DEVRESEL_ÖDEME(0,05/12;60;-10000)", "PMT(0.05/12,60,-10000)"),
         ("BD(0,05/12;60;-200)", "PV(0.05/12,60,-200)"),
         ("GD(0,05/12;60;-200)", "FV(0.05/12,60,-200)"),
@@ -62,6 +66,26 @@ fn turkish_aliases_and_argument_separators() {
     ] {
         assert_eq!(input(src), expected, "{src}");
     }
+}
+
+#[test]
+fn turkish_prefixed_calls_keep_alias_and_canonical_compatibility() {
+    for (src, expected) in [
+        ("_xlfn.TOPLA(1;2)", "SUM(1,2)"),
+        ("_xlws.birleştir(\"a\";\"b\")", "CONCATENATE(\"a\",\"b\")"),
+        ("_XlFn._xLwS.indis(A1:B2;1;2)", "INDEX(A1:B2,1,2)"),
+        ("_xlfn.İNDİS(A1:B2;1;2)", "INDEX(A1:B2,1,2)"),
+        ("_xlfn.METİNBİRLEŞTİR(\",\";DOĞRU;A1:A3)", "TEXTJOIN(\",\",TRUE,A1:A3)"),
+        ("_xlfn.ARALIKBİRLEŞTİR(A1:A3)", "CONCAT(A1:A3)"),
+        ("_xlfn.sum(1;2)", "SUM(1,2)"),
+        ("_xlws.CONCAT(A1:A3)", "CONCAT(A1:A3)"),
+        ("_xlfn._xlws.TEXTJOIN(\",\";TRUE;A1:A3)", "TEXTJOIN(\",\",TRUE,A1:A3)"),
+        ("_xludf.TOPLA(1;2)", "_xludf.TOPLA(1,2)"),
+    ] {
+        assert_eq!(input(src), expected, "{src}");
+    }
+    assert_eq!(print(&parse("_xlfn._xlws.sum(1,2)").unwrap()), "SUM(1,2)");
+    assert_eq!(print(&parse("_xludf.sum(1,2)").unwrap()), "_xludf.SUM(1,2)");
 }
 
 #[test]
@@ -115,13 +139,45 @@ fn turkish_input_preserves_defined_and_local_names() {
         ("LET(YANLIŞ;7;YANLIŞ)", "LET(YANLIŞ,7,YANLIŞ)"),
         ("LET(yanlış;YANLIŞ;EĞER(yanlış;1;2))", "LET(yanlış,FALSE,IF(yanlış,1,2))"),
         ("LET(TOPLA;LAMBDA(x;x+1);TOPLA(2))", "LET(TOPLA,LAMBDA(x,x+1),TOPLA(2))"),
-        ("LET(yanlış;7;değer;YANLIŞ;değer)", "LET(yanlış,7,değer,YANLIŞ,değer)"),
+        ("LET(yanlış;7;değer;YANLIŞ;değer)", "LET(yanlış,7,değer,yanlış,değer)"),
         ("LAMBDA(YANLIŞ;YANLIŞ)(7)", "LAMBDA(YANLIŞ,YANLIŞ)(7)"),
         ("LAMBDA(TOPLA;TOPLA(2))(LAMBDA(x;x+1))", "LAMBDA(TOPLA,TOPLA(2))(LAMBDA(x,x+1))"),
         ("LET(YANLIŞ;7;YANLIŞ)+YANLIŞ", "LET(YANLIŞ,7,YANLIŞ)+FALSE"),
         ("LET(YANLIŞ;7;LAMBDA(x;YANLIŞ+x)(1))", "LET(YANLIŞ,7,LAMBDA(x,YANLIŞ+x)(1))"),
     ] {
         assert_eq!(input(src), expected, "{src}");
+    }
+}
+
+#[test]
+fn turkish_local_references_use_the_nearest_declaration_spelling() {
+    // Canonical storage must use names the locale-independent evaluator considers equal.
+    for (src, expected) in [
+        ("let(yanlış;7;YANLIŞ)", "LET(yanlış,7,yanlış)"),
+        ("_xlfn.LET(yanlış;7;YANLIŞ)", "LET(yanlış,7,yanlış)"),
+        ("_xlfn.LAMBDA(indis;İNDİS)(7)", "LAMBDA(indis,indis)(7)"),
+        ("LAMBDA(indis;İNDİS)(7)", "LAMBDA(indis,indis)(7)"),
+        ("LET(birleştir;LAMBDA(x;x+1);BİRLEŞTİR(2))", "LET(birleştir,LAMBDA(x,x+1),birleştir(2))"),
+        ("LET(yanlış;7;LET(YANLIŞ;yanlış+1;yanlış)+YANLIŞ)", "LET(yanlış,7,LET(YANLIŞ,yanlış+1,YANLIŞ)+yanlış)"),
+        ("LET(yanlış;7;LAMBDA(YANLIŞ;yanlış)(2)+YANLIŞ)", "LET(yanlış,7,LAMBDA(YANLIŞ,YANLIŞ)(2)+yanlış)"),
+        ("LET(indis;7;ındıs)", "LET(indis,7,ındıs)"),
+    ] {
+        assert_eq!(input(src), expected, "{src}");
+    }
+    assert_eq!(print(&parse("LET(yanlış,7,YANLIŞ)").unwrap()), "LET(yanlış,7,YANLIŞ)");
+    assert_eq!(print(&parse_input("LET(yanlış,7,YANLIŞ)", FormulaLocale::En, |_| false).unwrap()), "LET(yanlış,7,YANLIŞ)");
+    assert_eq!(print(&parse_input("LET(yanlış;7;YANLIŞ)", FormulaLocale::Es, |_| false).unwrap()), "LET(yanlış,7,YANLIŞ)");
+}
+
+#[test]
+fn turkish_text_function_display_preserves_function_identity() {
+    for (canonical, localized) in
+        [(r#"CONCAT(A1:A3)"#, r#"ARALIKBİRLEŞTİR(A1:A3)"#), (r#"TEXTJOIN(",",TRUE,A1:A3)"#, r#"METİNBİRLEŞTİR(",";DOĞRU;A1:A3)"#)]
+    {
+        let expr = parse(canonical).unwrap();
+        let shown = print_input(&expr, FormulaLocale::Tr, |_| false).unwrap();
+        assert_eq!(shown, localized);
+        assert_eq!(print(&parse_input(&shown, FormulaLocale::Tr, |_| false).unwrap()), canonical);
     }
 }
 
@@ -150,7 +206,7 @@ fn turkish_display_round_trips_text_containing_separators() {
     let tr = FormulaLocale::Tr;
     let expr = parse(r#"IF(A1="a,b;c",CONCAT("1.5",",",";"),SUM(0.25,A1:A3 B2))"#).unwrap();
     let shown = print_input(&expr, tr, |_| false).unwrap();
-    assert_eq!(shown, r#"EĞER(A1="a,b;c";METİNBİRLEŞTİR("1.5";",";";");TOPLA(0,25;A1:A3 B2))"#);
+    assert_eq!(shown, r#"EĞER(A1="a,b;c";ARALIKBİRLEŞTİR("1.5";",";";");TOPLA(0,25;A1:A3 B2))"#);
     assert_eq!(print(&parse_input(&shown, tr, |_| false).unwrap()), print(&expr));
 }
 
